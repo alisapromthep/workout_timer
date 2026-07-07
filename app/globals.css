@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --paper: 251 248 242;
+  --ink: 61 56 43;
+  --surface: 241 233 216;
+  --line: 231 223 201;
+  --accent-ink: 61 56 43;
+  --accent-paper: 251 248 242;
+}
+
+[data-theme="dark"] {
+  --paper: 30 29 24;
+  --ink: 240 236 224;
+  --surface: 42 40 33;
+  --line: 55 52 42;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  background-color: rgb(var(--paper));
+  color: rgb(var(--ink));
+  overscroll-behavior: none;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+button {
+  touch-action: manipulation;
+}
+
+::selection {
+  background: #fcc88a;
+  color: #3d382b;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
