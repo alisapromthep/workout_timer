@@ -87,6 +87,14 @@ export default function InputScreen({ onWorkoutReady }) {
             ? "Parse workout"
             : "Generate workout"}
       </button>
+      <a
+        href="https://alisapromthep.dev"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-8 text-center text-ink/30 text-xs hover:text-ink/50 transition-colors"
+      >
+        Built by Alisa Promthep ↗
+      </a>
     </div>
   );
 }
