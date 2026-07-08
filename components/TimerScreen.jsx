@@ -27,11 +27,44 @@ function findNextMoveName(steps, index) {
   return null;
 }
 
+// Turns the step being left into a summary log entry. Countdown steps
+// aren't logged — they're just the 5s transition, not a tracked activity.
+function buildLogEntry(step, actualSeconds, adjustment, note) {
+  if (step.type === "move") {
+    return {
+      type: "move",
+      name: step.exercise.name,
+      timed: step.timed,
+      plannedSeconds: step.timed ? step.seconds : null,
+      plannedReps: step.timed ? null : step.exercise.reps,
+      actualSeconds,
+      round: step.round,
+      totalRounds: step.totalRounds,
+    };
+  }
+  if (step.type === "rest") {
+    return {
+      type: "rest",
+      label: step.label,
+      plannedSeconds: step.seconds,
+      actualSeconds,
+      adjustment,
+      note: note.trim(),
+    };
+  }
+  return null;
+}
+
 export default function TimerScreen({ steps, onFinish, onExit }) {
   const [index, setIndex] = useState(0);
   const [seconds, setSeconds] = useState(() => initialSeconds(steps[0]));
   const [paused, setPaused] = useState(false);
+  const [note, setNote] = useState("");
   const intervalRef = useRef(null);
+  const stepStartRef = useRef(Date.now());
+  const noteRef = useRef("");
+  const adjustmentRef = useRef(0);
+  const logRef = useRef([]);
 
   const step = steps[index];
 
@@ -46,9 +79,40 @@ export default function TimerScreen({ steps, onFinish, onExit }) {
     return initialSecondsFor(s);
   }
 
+  // Reset per-step trackers every time we land on a new step.
+  useEffect(() => {
+    stepStartRef.current = Date.now();
+    adjustmentRef.current = 0;
+    noteRef.current = "";
+    setNote("");
+  }, [index]);
+
+  function adjustRest(delta) {
+    setSeconds((s) => Math.max(0, s + delta));
+    adjustmentRef.current += delta;
+  }
+
+  function handleNoteChange(e) {
+    setNote(e.target.value);
+    noteRef.current = e.target.value;
+  }
+
+  // advance to a given step index, logging the step we're leaving first
   function goTo(nextIndex) {
-    if (nextIndex >= steps.length) {
-      onFinish();
+    const leaving = steps[index];
+    const actualSeconds = Math.round(
+      (Date.now() - stepStartRef.current) / 1000,
+    );
+    const entry = buildLogEntry(
+      leaving,
+      actualSeconds,
+      adjustmentRef.current,
+      noteRef.current,
+    );
+    if (entry) logRef.current = [...logRef.current, entry];
+
+    if (nextIndex >= steps.length || steps[nextIndex]?.type === "done") {
+      onFinish(logRef.current);
       return;
     }
     setIndex(nextIndex);
@@ -56,11 +120,7 @@ export default function TimerScreen({ steps, onFinish, onExit }) {
   }
 
   useEffect(() => {
-    if (step.type === "done") {
-      onFinish();
-      return;
-    }
-    if (seconds === null) return;
+    if (seconds === null) return; // rep-based move: no auto timer
     if (paused) return;
 
     intervalRef.current = setInterval(() => {
@@ -163,20 +223,25 @@ export default function TimerScreen({ steps, onFinish, onExit }) {
               </p>
               <div className="flex gap-3 mt-6">
                 <button
-                  onClick={() =>
-                    setSeconds((s) => Math.max(0, s - REST_ADJUST))
-                  }
+                  onClick={() => adjustRest(-REST_ADJUST)}
                   className="px-4 py-2 rounded-full bg-accentInk/10 text-accentInk text-sm font-medium"
                 >
                   −{REST_ADJUST}s
                 </button>
                 <button
-                  onClick={() => setSeconds((s) => s + REST_ADJUST)}
+                  onClick={() => adjustRest(REST_ADJUST)}
                   className="px-4 py-2 rounded-full bg-accentInk/10 text-accentInk text-sm font-medium"
                 >
                   +{REST_ADJUST}s
                 </button>
               </div>
+              <textarea
+                value={note}
+                onChange={handleNoteChange}
+                placeholder="Notes: how it felt, weight used, adjustments..."
+                rows={2}
+                className="mt-6 w-full max-w-xs bg-accentInk/10 placeholder:text-accentInk/40 text-accentInk rounded-xl p-3 text-sm outline-none resize-none"
+              />
             </>
           )}
 
