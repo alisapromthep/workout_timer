@@ -188,7 +188,7 @@ export default function TimerScreen({ steps, onFinish, onExit }) {
               <p className="text-accentInk/60 text-sm mb-2">
                 Move {step.index} / {step.total}
               </p>
-              <h2 className="text-3xl font-bold text-accentInk mb-4 px-4">
+              <h2 className="text-4xl font-bold text-accentInk mb-4 px-4">
                 {step.exercise.name}
               </h2>
 

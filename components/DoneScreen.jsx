@@ -2,9 +2,23 @@
 
 import { useState } from "react";
 
+function totalSeconds(log) {
+  return log.reduce((sum, entry) => sum + (entry.actualSeconds || 0), 0);
+}
+
+function formatDuration(totalSecs) {
+  const m = Math.floor(totalSecs / 60);
+  const s = totalSecs % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 // Builds the plain-text version of the summary for copy/paste.
 function buildSummaryText(title, log) {
-  const lines = [title ? `${title} — Workout Summary` : "Workout Summary", ""];
+  const lines = [
+    title ? `${title} — Workout Summary` : "Workout Summary",
+    `Total time: ${formatDuration(totalSeconds(log))}`,
+    "",
+  ];
 
   log.forEach((entry) => {
     if (entry.type === "move") {
@@ -60,7 +74,13 @@ export default function DoneScreen({ workoutTitle, log = [], onRestart }) {
       <p className="text-rest text-sm font-medium tracking-widest uppercase mb-1">
         Workout Complete
       </p>
-      <h1 className="text-3xl font-bold text-ink mb-6">Nice work.</h1>
+      <h1 className="text-3xl font-bold text-ink mb-1">Nice work.</h1>
+      {log.length > 0 && (
+        <p className="text-ink/50 text-sm mb-6">
+          Total time:{" "}
+          <span className="font-mono">{formatDuration(totalSeconds(log))}</span>
+        </p>
+      )}
 
       {log.length > 0 && (
         <>
