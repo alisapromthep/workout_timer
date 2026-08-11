@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { playBell, playTick } from "../lib/sound";
 
 const REST_ADJUST = 15;
+const FINAL_TICK_SECONDS = 3;
+const MIN_TIMED_SECONDS_FOR_FINAL_TICK = 5;
 
 function ProgressLabel({ step }) {
   if (step.type === "move" || step.type === "rest") {
@@ -86,6 +89,39 @@ export default function TimerScreen({ steps, onFinish, onExit }) {
     noteRef.current = "";
     setNote("");
   }, [index]);
+
+  // Bell when a move or rest actually starts.
+  useEffect(() => {
+    const current = steps[index];
+    if (current && (current.type === "move" || current.type === "rest")) {
+      playBell();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index]);
+
+  // Tick each second during the "get ready" countdown.
+  useEffect(() => {
+    if (steps[index]?.type === "countdown" && seconds !== null) {
+      playTick();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index, seconds]);
+
+  // Tick during the final few seconds of a timed move, so long enough
+  // exercises get a "wrap it up" cue without ticking through short ones.
+  useEffect(() => {
+    const current = steps[index];
+    if (
+      current?.type === "move" &&
+      current.timed &&
+      current.seconds >= MIN_TIMED_SECONDS_FOR_FINAL_TICK &&
+      seconds > 0 &&
+      seconds <= FINAL_TICK_SECONDS
+    ) {
+      playTick();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index, seconds]);
 
   function adjustRest(delta) {
     setSeconds((s) => Math.max(0, s + delta));

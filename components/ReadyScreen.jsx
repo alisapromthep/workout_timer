@@ -1,6 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { estimateWorkoutSeconds } from "../lib/steps";
+import { unlockAudio } from "../lib/sound";
+
+function formatEstimate(totalSeconds) {
+  const mins = Math.round(totalSeconds / 60);
+  if (mins < 1) return `${totalSeconds}s`;
+  return `~${mins} min`;
+}
 
 function StepperRow({
   label,
@@ -41,7 +49,18 @@ export default function ReadyScreen({ workout, onStart, onBack }) {
     workout.restBetweenRounds || 0,
   );
 
+  const estimatedSeconds = useMemo(
+    () =>
+      estimateWorkoutSeconds({
+        ...workout,
+        rounds,
+        restBetweenRounds: restBetweenRounds || null,
+      }),
+    [workout, rounds, restBetweenRounds],
+  );
+
   function handleStart() {
+    unlockAudio();
     onStart({
       ...workout,
       rounds,
@@ -61,9 +80,12 @@ export default function ReadyScreen({ workout, onStart, onBack }) {
       <h1 className="text-2xl font-bold text-ink mb-1">
         {workout.title || "Your workout"}
       </h1>
-      <p className="text-ink/50 text-sm mb-6">
+      <p className="text-ink/50 text-sm mb-1">
         {workout.style === "sets" ? "Straight sets" : "Circuit"} ·{" "}
         {workout.exercises.length} moves
+      </p>
+      <p className="text-ink/40 text-xs mb-6 font-mono">
+        Estimated time: {formatEstimate(estimatedSeconds)}
       </p>
 
       <div className="mb-2">
@@ -89,38 +111,41 @@ export default function ReadyScreen({ workout, onStart, onBack }) {
       </div>
 
       <div className="flex-1 overflow-y-auto -mx-6 px-6 mt-4 space-y-2">
-        {workout.exercises.map((ex, i) => (
-          <div key={i} className="bg-surface rounded-xl px-4 py-3">
-            <div className="flex items-baseline justify-between">
-              <span className="text-ink font-medium text-[15px]">
-                {ex.name}
-              </span>
-              <span className="font-mono text-ink/60 text-xs">
-                {ex.exerciseSeconds
-                  ? `${ex.exerciseSeconds}s`
-                  : `${ex.reps || "—"} reps${ex.perSide ? "/side" : ""}`}
-              </span>
+        {workout.exercises.map((ex, i) => {
+          const exSets = ex.sets || rounds;
+          const exRest = ex.restAfter || restBetweenRounds;
+          return (
+            <div key={i} className="bg-surface rounded-xl px-4 py-3">
+              <div className="flex items-baseline justify-between">
+                <span className="text-ink font-medium text-[15px]">
+                  {ex.name}
+                </span>
+                <span className="font-mono text-ink/60 text-xs">
+                  {ex.exerciseSeconds
+                    ? `${ex.exerciseSeconds}s`
+                    : `${ex.reps || "—"} reps${ex.perSide ? "/side" : ""}`}
+                </span>
+              </div>
+              {(ex.weight || ex.cue) && (
+                <p className="text-ink/40 text-xs mt-1">
+                  {[ex.weight, ex.cue].filter(Boolean).join(" · ")}
+                </p>
+              )}
+              {workout.style === "sets" ? (
+                exSets > 1 && (
+                  <p className="text-ink/40 text-xs mt-1">
+                    × {exSets} sets
+                    {exRest ? `, ${exRest}s rest between` : ""}
+                  </p>
+                )
+              ) : ex.restAfter ? (
+                <p className="text-rest/70 text-xs mt-1">
+                  +{ex.restAfter}s rest before next move
+                </p>
+              ) : null}
             </div>
-            {(ex.weight || ex.cue) && (
-              <p className="text-ink/40 text-xs mt-1">
-                {[ex.weight, ex.cue].filter(Boolean).join(" · ")}
-              </p>
-            )}
-            {workout.style === "sets" && rounds > 1 && (
-              <p className="text-ink/40 text-xs mt-1">
-                × {rounds} sets
-                {restBetweenRounds
-                  ? `, ${restBetweenRounds}s rest between`
-                  : ""}
-              </p>
-            )}
-            {ex.restAfter ? (
-              <p className="text-rest/70 text-xs mt-1">
-                +{ex.restAfter}s rest before next move
-              </p>
-            ) : null}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <button

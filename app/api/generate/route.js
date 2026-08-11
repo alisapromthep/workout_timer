@@ -2,6 +2,34 @@ import { SYSTEM_PROMPT, buildUserPrompt } from '../../../lib/prompt';
 
 const MODEL = 'gemini-2.5-flash';
 
+// The model sometimes echoes a shared, workout-wide value (e.g. every
+// exercise getting the same "restAfter") instead of leaving it out and
+// relying on the top-level field. When that happens, the per-exercise value
+// always wins over the interactive Ready-screen controls, making the
+// rounds/rest steppers appear to do nothing. If every exercise carries the
+// identical value, treat it as the shared default (hoisting it to the
+// top-level field when that's still unset) instead of a real override, and
+// only keep per-exercise values that are genuinely distinct.
+function reconcileSharedField(workout, exerciseField, sharedField) {
+  const exercises = workout.exercises;
+  if (exercises.length === 0) return;
+
+  const values = exercises.map((ex) => ex[exerciseField]);
+  const allShareSameValue =
+    values.every((v) => typeof v === 'number' && v > 0) &&
+    values.every((v) => v === values[0]);
+
+  if (allShareSameValue && !workout[sharedField]) {
+    workout[sharedField] = values[0];
+  }
+
+  workout.exercises = exercises.map((ex) => {
+    const v = ex[exerciseField];
+    const isRealOverride = typeof v === 'number' && v > 0 && v !== workout[sharedField];
+    return { ...ex, [exerciseField]: isRealOverride ? v : null };
+  });
+}
+
 export async function POST(req) {
   try {
     const { mode, text } = await req.json();
@@ -67,6 +95,9 @@ export async function POST(req) {
     workout.rounds = workout.rounds || 1;
     workout.style = workout.style === 'sets' ? 'sets' : 'circuit';
     workout.exercises = Array.isArray(workout.exercises) ? workout.exercises : [];
+
+    reconcileSharedField(workout, 'sets', 'rounds');
+    reconcileSharedField(workout, 'restAfter', 'restBetweenRounds');
 
     return Response.json({ workout });
   } catch (err) {
