@@ -2,11 +2,43 @@
 
 import { useState } from "react";
 
+const STORAGE_KEY_MODE = "fitness-timer:input-mode";
+const STORAGE_KEY_TEXT = "fitness-timer:input-text";
+
+// Reads back whatever the user was typing so "Edit prompt" doesn't lose it.
+// Cleared automatically when the browser tab/session ends.
+function readStored(key, fallback) {
+  if (typeof window === "undefined") return fallback;
+  try {
+    return sessionStorage.getItem(key) ?? fallback;
+  } catch (e) {
+    return fallback;
+  }
+}
+
 export default function InputScreen({ onWorkoutReady }) {
-  const [mode, setMode] = useState("paste");
-  const [text, setText] = useState("");
+  const [mode, setModeState] = useState(() => readStored(STORAGE_KEY_MODE, "paste"));
+  const [text, setTextState] = useState(() => readStored(STORAGE_KEY_TEXT, ""));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  function setMode(value) {
+    setModeState(value);
+    try {
+      sessionStorage.setItem(STORAGE_KEY_MODE, value);
+    } catch (e) {
+      // sessionStorage unavailable — draft just won't persist
+    }
+  }
+
+  function setText(value) {
+    setTextState(value);
+    try {
+      sessionStorage.setItem(STORAGE_KEY_TEXT, value);
+    } catch (e) {
+      // sessionStorage unavailable — draft just won't persist
+    }
+  }
 
   async function handleSubmit() {
     if (!text.trim()) return;
