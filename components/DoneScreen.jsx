@@ -13,7 +13,7 @@ function formatDuration(totalSecs) {
 }
 
 // Builds the plain-text version of the summary for copy/paste.
-function buildSummaryText(title, log) {
+function buildSummaryText(title, log, finalNote) {
   const lines = [
     title ? `${title} — Workout Summary` : "Workout Summary",
     `Total time: ${formatDuration(totalSeconds(log))}`,
@@ -45,16 +45,22 @@ function buildSummaryText(title, log) {
     }
   });
 
+  if (finalNote && finalNote.trim()) {
+    lines.push("", `Notes: ${finalNote.trim()}`);
+  }
+
   return lines.join("\n");
 }
 
 export default function DoneScreen({ workoutTitle, log = [], onRestart }) {
   const [copied, setCopied] = useState(false);
-  const summaryText = buildSummaryText(workoutTitle, log);
+  const [finalNote, setFinalNote] = useState("");
 
   async function handleCopy() {
     try {
-      await navigator.clipboard.writeText(summaryText);
+      await navigator.clipboard.writeText(
+        buildSummaryText(workoutTitle, log, finalNote),
+      );
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (e) {
@@ -83,7 +89,6 @@ export default function DoneScreen({ workoutTitle, log = [], onRestart }) {
       )}
 
       {log.length > 0 && (
-        <>
           <div className="flex-1 overflow-y-auto -mx-6 px-6 space-y-2 mb-4">
             {log.map((entry, i) => (
               <div key={i} className="bg-surface rounded-xl px-4 py-3">
@@ -134,15 +139,25 @@ export default function DoneScreen({ workoutTitle, log = [], onRestart }) {
               </div>
             ))}
           </div>
-
-          <button
-            onClick={handleCopy}
-            className="w-full py-3 rounded-2xl bg-surface text-ink font-medium text-sm mb-3"
-          >
-            {copied ? "Copied ✓" : "Copy summary"}
-          </button>
-        </>
       )}
+
+      <label className="text-ink/50 text-xs font-medium uppercase tracking-wide mb-2">
+        Notes
+      </label>
+      <textarea
+        value={finalNote}
+        onChange={(e) => setFinalNote(e.target.value)}
+        placeholder="How did it go? Anything to remember for next time..."
+        rows={3}
+        className="w-full bg-surface placeholder:text-ink/40 text-ink rounded-xl p-3 text-sm outline-none resize-none mb-3"
+      />
+
+      <button
+        onClick={handleCopy}
+        className="w-full py-3 rounded-2xl bg-surface text-ink font-medium text-sm mb-3"
+      >
+        {copied ? "Copied ✓" : "Copy summary"}
+      </button>
 
       <button
         onClick={onRestart}

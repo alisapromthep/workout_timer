@@ -63,6 +63,7 @@ export default function TimerScreen({ steps, onFinish, onExit }) {
   const [seconds, setSeconds] = useState(() => initialSeconds(steps[0]));
   const [paused, setPaused] = useState(false);
   const [note, setNote] = useState("");
+  const [showEndConfirm, setShowEndConfirm] = useState(false);
   const intervalRef = useRef(null);
   const stepStartRef = useRef(Date.now());
   const noteRef = useRef("");
@@ -153,6 +154,12 @@ export default function TimerScreen({ steps, onFinish, onExit }) {
     }
     setIndex(nextIndex);
     setSeconds(initialSecondsFor(steps[nextIndex]));
+  }
+
+  function finishEarly() {
+    setShowEndConfirm(false);
+    clearInterval(intervalRef.current);
+    goTo(steps.length);
   }
 
   useEffect(() => {
@@ -294,7 +301,39 @@ export default function TimerScreen({ steps, onFinish, onExit }) {
         >
           {step.type === "move" && !step.timed ? "Done" : "Skip"}
         </button>
+        <button
+          onClick={() => setShowEndConfirm(true)}
+          className="w-full py-3 text-accentInk/50 text-sm font-medium mt-1"
+        >
+          Finish early
+        </button>
       </div>
+
+      {showEndConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center px-6 z-50">
+          <div className="bg-paper rounded-2xl p-6 max-w-sm w-full">
+            <h3 className="text-lg font-bold text-ink mb-2">End session?</h3>
+            <p className="text-ink/60 text-sm mb-6">
+              This will end the workout now. Your progress so far will be
+              saved in the summary.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowEndConfirm(false)}
+                className="flex-1 py-3 rounded-xl bg-surface text-ink font-medium text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={finishEarly}
+                className="flex-1 py-3 rounded-xl bg-rest text-accentInk font-bold text-sm"
+              >
+                End session
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
