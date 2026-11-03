@@ -1,6 +1,80 @@
 import { SYSTEM_PROMPT, buildUserPrompt } from '../../../lib/prompt';
 
-const MODEL = 'gemini-2.5-flash';
+// Tried in order. If the primary model is overloaded even after retries,
+// fall back to the lighter model, which usually has spare capacity.
+const MODELS = ['gemini-2.5-flash', 'gemini-3.5-flash-lite'];
+
+// Gemini returns these for temporary capacity problems ("model is
+// experiencing high demand", rate limits, transient server errors).
+// They usually clear within seconds, so they're worth retrying.
+const RETRYABLE_STATUSES = new Set([429, 500, 503]);
+const RETRY_DELAYS_MS = [1000, 2000];
+
+// Retries plus a fallback model can take longer than Vercel's default
+// function timeout, so allow up to 60s.
+export const maxDuration = 60;
+
+// A 404 means the model was retired or isn't offered to this API key
+// (Google periodically retires older models), so skip straight to the next.
+const MODEL_UNAVAILABLE_STATUS = 404;
+
+// The model occasionally returns output that isn't valid JSON (cut off,
+// wrapped in prose, or split across parts). Asking again almost always
+// fixes it, so allow one extra attempt before showing an error.
+const GENERATION_ATTEMPTS = 2;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Pulls the workout object out of a Gemini response. Newer models can split
+// the answer across several parts (and include "thought" parts), so join
+// every non-thought text part rather than trusting parts[0], then take the
+// outermost {...} to drop any stray fences or prose around it.
+function parseWorkout(data) {
+  const parts = data?.candidates?.[0]?.content?.parts || [];
+  const text = parts
+    .filter((p) => !p.thought && typeof p.text === 'string')
+    .map((p) => p.text)
+    .join('');
+
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start === -1 || end <= start) {
+    throw new Error(text ? 'No JSON object in response' : 'Empty response');
+  }
+  return JSON.parse(text.slice(start, end + 1));
+}
+
+async function callGemini(model, apiKey, body) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  return fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
+    body,
+  });
+}
+
+// Tries each model in turn, retrying temporary failures with a short
+// backoff. Returns the first OK response; otherwise the most meaningful
+// failure (a "busy" error beats a later "model unavailable" 404, so the
+// user sees the friendly busy message rather than a confusing 404).
+async function callGeminiWithRetry(apiKey, body) {
+  let busyRes = null;
+  let res;
+  for (const model of MODELS) {
+    for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+      res = await callGemini(model, apiKey, body);
+      if (res.ok) return res;
+      if (res.status === MODEL_UNAVAILABLE_STATUS) break;
+      if (!RETRYABLE_STATUSES.has(res.status)) return res;
+      busyRes = res;
+      if (attempt < RETRY_DELAYS_MS.length) await sleep(RETRY_DELAYS_MS[attempt]);
+    }
+  }
+  return busyRes || res;
+}
 
 // The model sometimes echoes a shared, workout-wide value (e.g. every
 // exercise getting the same "restAfter") instead of leaving it out and
@@ -46,47 +120,52 @@ export async function POST(req) {
       );
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
-
-    const geminiRes = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
+    const body = JSON.stringify({
+      system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: [
+        { role: 'user', parts: [{ text: buildUserPrompt(mode, text) }] },
+      ],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        temperature: 0.4,
       },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [
-          { role: 'user', parts: [{ text: buildUserPrompt(mode, text) }] },
-        ],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.4,
-        },
-      }),
     });
 
-    if (!geminiRes.ok) {
-      const errText = await geminiRes.text();
-      return Response.json(
-        { error: `Gemini API error (${geminiRes.status}): ${errText.slice(0, 300)}` },
-        { status: 502 }
-      );
-    }
-
-    const data = await geminiRes.json();
-    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!raw) {
-      return Response.json({ error: 'Gemini returned no content.' }, { status: 502 });
-    }
-
     let workout;
-    try {
-      workout = JSON.parse(raw);
-    } catch (e) {
+    for (let attempt = 1; attempt <= GENERATION_ATTEMPTS; attempt++) {
+      const geminiRes = await callGeminiWithRetry(apiKey, body);
+
+      if (!geminiRes.ok) {
+        if (RETRYABLE_STATUSES.has(geminiRes.status)) {
+          return Response.json(
+            { error: 'Gemini is busy right now. Please try again in a minute.' },
+            { status: 503 }
+          );
+        }
+        const errText = await geminiRes.text();
+        return Response.json(
+          { error: `Gemini API error (${geminiRes.status}): ${errText.slice(0, 300)}` },
+          { status: 502 }
+        );
+      }
+
+      const data = await geminiRes.json();
+      try {
+        workout = parseWorkout(data);
+        break;
+      } catch (e) {
+        // Logged so the bad output can be inspected in the server / Vercel logs.
+        console.error(
+          `Unparseable Gemini response (attempt ${attempt}, finishReason: ${data?.candidates?.[0]?.finishReason}):`,
+          e.message,
+          JSON.stringify(data?.candidates?.[0]?.content?.parts)?.slice(0, 1000)
+        );
+      }
+    }
+
+    if (!workout || typeof workout !== 'object') {
       return Response.json(
-        { error: 'Could not parse the model response as JSON.' },
+        { error: 'Could not parse the model response as JSON. Please try again.' },
         { status: 502 }
       );
     }
