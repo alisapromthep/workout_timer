@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 const STORAGE_KEY_MODE = "fitness-timer:input-mode";
 const STORAGE_KEY_TEXT = "fitness-timer:input-text";
@@ -21,6 +21,7 @@ export default function InputScreen({ onWorkoutReady }) {
   const [text, setTextState] = useState(() => readStored(STORAGE_KEY_TEXT, ""));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const textareaRef = useRef(null);
 
   function setMode(value) {
     setModeState(value);
@@ -38,6 +39,12 @@ export default function InputScreen({ onWorkoutReady }) {
     } catch (e) {
       // sessionStorage unavailable — draft just won't persist
     }
+  }
+
+  function handleClear() {
+    setText("");
+    setError("");
+    textareaRef.current?.focus();
   }
 
   async function handleSubmit() {
@@ -95,16 +102,27 @@ export default function InputScreen({ onWorkoutReady }) {
         </button>
       </div>
 
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder={
-          mode === "paste"
-            ? "Paste your workout here..."
-            : "e.g. 20 minute upper body workout with dumbbells, 3 rounds, 45 sec rest"
-        }
-        className="flex-1 min-h-[240px] bg-surface rounded-2xl p-4 text-ink placeholder:text-ink/30 outline-none focus:ring-2 focus:ring-go/60 resize-none text-[15px] leading-relaxed"
-      />
+      <div className="relative flex-1 flex flex-col">
+        <textarea
+          ref={textareaRef}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={
+            mode === "paste"
+              ? "Paste your workout here..."
+              : "e.g. 20 minute upper body workout with dumbbells, 3 rounds, 45 sec rest"
+          }
+          className="flex-1 min-h-[240px] bg-surface rounded-2xl p-4 pb-12 text-ink placeholder:text-ink/30 outline-none focus:ring-2 focus:ring-go/60 resize-none text-[15px] leading-relaxed"
+        />
+        {text && !loading && (
+          <button
+            onClick={handleClear}
+            className="absolute bottom-3 right-3 px-3 py-1 rounded-full bg-paper text-ink/60 text-xs font-medium hover:text-ink transition-colors"
+          >
+            Clear
+          </button>
+        )}
+      </div>
 
       {error && <p className="text-rest text-sm mt-3 leading-snug">{error}</p>}
 
