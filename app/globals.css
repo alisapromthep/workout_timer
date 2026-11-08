@@ -47,3 +47,11 @@ button {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* Scrollable areas that shouldn't show a scrollbar (e.g. the timer's progress rail). */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

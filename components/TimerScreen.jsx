@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { playBell, playTick } from "../lib/sound";
+import ProgressRail from "./ProgressRail";
 
 const REST_ADJUST = 15;
 const FINAL_TICK_SECONDS = 3;
@@ -20,14 +21,18 @@ function ProgressLabel({ step }) {
   return null;
 }
 
-// Looks ahead in the step list to find the name of the next actual move,
-// so we can show a "Next up" preview during the current move or rest.
-function findNextMoveName(steps, index) {
+// Looks ahead in the step list to find the next actual move, so we can
+// show a "Next up" preview (name + weight) during the current move or rest.
+function findNextMove(steps, index) {
   for (let i = index + 1; i < steps.length; i++) {
-    if (steps[i].type === "move") return steps[i].exercise.name;
+    if (steps[i].type === "move") return steps[i].exercise;
     if (steps[i].type === "done") return null;
   }
   return null;
+}
+
+function nameWithWeight(exercise) {
+  return [exercise.name, exercise.weight].filter(Boolean).join(" · ");
 }
 
 // Turns the step being left into a summary log entry. Countdown steps
@@ -189,125 +194,129 @@ export default function TimerScreen({ steps, onFinish, onExit }) {
       : step.type === "rest"
         ? "bg-rest"
         : "bg-go";
-  const nextMoveName = findNextMoveName(steps, index);
+  const nextMove = findNextMove(steps, index);
 
   return (
     <div
-      className={`min-h-screen flex flex-col ${bg} transition-colors duration-300`}
+      className={`min-h-screen flex ${bg} transition-colors duration-300`}
     >
-      <div className="max-w-md w-full mx-auto flex flex-col flex-1 px-6 py-8">
-        <div className="flex items-center justify-between mb-8">
-          <button
-            onClick={onExit}
-            aria-label="Exit workout"
-            className="text-accentInk/50 text-sm font-medium"
-          >
-            🏠
-          </button>
-          <ProgressLabel step={step} />
-          <button
-            onClick={() => setPaused((p) => !p)}
-            className="text-accentInk/50 text-sm font-medium"
-          >
-            {paused ? "Resume" : "Pause"}
-          </button>
-        </div>
+      <div className="flex-1 min-w-0 flex flex-col">
+        <div className="max-w-md md:max-w-2xl lg:max-w-3xl w-full mx-auto flex flex-col flex-1 px-6 md:px-10 py-8 md:py-12">
+          <div className="flex items-center justify-between mb-8">
+            <button
+              onClick={onExit}
+              aria-label="Exit workout"
+              className="text-accentInk/50 text-sm md:text-base font-medium"
+            >
+              🏠
+            </button>
+            <ProgressLabel step={step} />
+            <button
+              onClick={() => setPaused((p) => !p)}
+              className="text-accentInk/50 text-sm md:text-base font-medium"
+            >
+              {paused ? "Resume" : "Pause"}
+            </button>
+          </div>
 
-        <div className="flex-1 flex flex-col items-center justify-center text-center">
-          {step.type === "countdown" && (
-            <>
-              <p className="text-accentInk/60 text-base mb-2">Get ready</p>
-              <p className="font-mono text-8xl font-bold text-accentInk tabular-nums">
-                {seconds}
-              </p>
-              <p className="text-accentInk/70 text-lg font-medium mt-4">
-                {step.next?.name}
-              </p>
-            </>
-          )}
-
-          {step.type === "move" && (
-            <>
-              <p className="text-accentInk/60 text-sm mb-2">
-                Move {step.index} / {step.total}
-              </p>
-              <h2 className="text-4xl font-bold text-accentInk mb-4 px-4">
-                {step.exercise.name}
-              </h2>
-
-              {step.timed ? (
-                <p className="font-mono text-8xl font-bold text-accentInk tabular-nums">
+          <div className="flex-1 flex flex-col items-center justify-center text-center">
+            {step.type === "countdown" && (
+              <>
+                <p className="text-accentInk/60 text-base md:text-xl mb-2">Get ready</p>
+                <p className="font-mono text-8xl md:text-9xl lg:text-[10rem] font-bold text-accentInk tabular-nums">
                   {seconds}
                 </p>
-              ) : (
-                <p className="font-mono text-7xl font-bold text-accentInk tabular-nums">
-                  {step.exercise.reps ?? "—"}
-                  <span className="text-2xl font-display font-medium ml-2">
-                    reps{step.exercise.perSide ? "/side" : ""}
-                  </span>
+                <p className="text-accentInk/70 text-lg md:text-2xl font-medium mt-4">
+                  {step.next && nameWithWeight(step.next)}
                 </p>
-              )}
+              </>
+            )}
 
-              {(step.exercise.weight || step.exercise.cue) && (
-                <p className="text-accentInk/60 text-sm mt-4 max-w-xs px-4">
-                  {[step.exercise.weight, step.exercise.cue]
-                    .filter(Boolean)
-                    .join(" · ")}
+            {step.type === "move" && (
+              <>
+                <p className="text-accentInk/60 text-sm md:text-base mb-2">
+                  Move {step.index} / {step.total}
                 </p>
-              )}
-            </>
-          )}
+                <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-accentInk mb-4 px-4">
+                  {step.exercise.name}
+                </h2>
 
-          {step.type === "rest" && (
-            <>
-              <p className="text-accentInk/70 text-base mb-2">{step.label}</p>
-              <p className="font-mono text-8xl font-bold text-accentInk tabular-nums">
-                {seconds}
+                {step.timed ? (
+                  <p className="font-mono text-8xl md:text-9xl lg:text-[10rem] font-bold text-accentInk tabular-nums">
+                    {seconds}
+                  </p>
+                ) : (
+                  <p className="font-mono text-7xl md:text-8xl lg:text-9xl font-bold text-accentInk tabular-nums">
+                    {step.exercise.reps ?? "—"}
+                    <span className="text-2xl md:text-3xl font-display font-medium ml-2">
+                      reps{step.exercise.perSide ? "/side" : ""}
+                    </span>
+                  </p>
+                )}
+
+                {(step.exercise.weight || step.exercise.cue) && (
+                  <p className="text-accentInk/60 text-sm md:text-base mt-4 max-w-xs md:max-w-md px-4">
+                    {[step.exercise.weight, step.exercise.cue]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                )}
+              </>
+            )}
+
+            {step.type === "rest" && (
+              <>
+                <p className="text-accentInk/70 text-base md:text-xl mb-2">{step.label}</p>
+                <p className="font-mono text-8xl md:text-9xl lg:text-[10rem] font-bold text-accentInk tabular-nums">
+                  {seconds}
+                </p>
+                <div className="flex gap-3 mt-6">
+                  <button
+                    onClick={() => adjustRest(-REST_ADJUST)}
+                    className="px-4 py-2 md:px-5 md:py-2.5 rounded-full bg-accentInk/10 text-accentInk text-sm md:text-base font-medium"
+                  >
+                    −{REST_ADJUST}s
+                  </button>
+                  <button
+                    onClick={() => adjustRest(REST_ADJUST)}
+                    className="px-4 py-2 md:px-5 md:py-2.5 rounded-full bg-accentInk/10 text-accentInk text-sm md:text-base font-medium"
+                  >
+                    +{REST_ADJUST}s
+                  </button>
+                </div>
+                <textarea
+                  value={note}
+                  onChange={handleNoteChange}
+                  placeholder="Notes: how it felt, weight used, adjustments..."
+                  rows={2}
+                  className="mt-6 w-full max-w-xs md:max-w-md bg-accentInk/10 placeholder:text-accentInk/40 text-accentInk rounded-xl p-3 text-sm md:text-base outline-none resize-none"
+                />
+              </>
+            )}
+
+            {nextMove && step.type !== "countdown" && (
+              <p className="text-accentInk/50 text-xs md:text-sm mt-8 tracking-wide uppercase">
+                Next: {nameWithWeight(nextMove)}
               </p>
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={() => adjustRest(-REST_ADJUST)}
-                  className="px-4 py-2 rounded-full bg-accentInk/10 text-accentInk text-sm font-medium"
-                >
-                  −{REST_ADJUST}s
-                </button>
-                <button
-                  onClick={() => adjustRest(REST_ADJUST)}
-                  className="px-4 py-2 rounded-full bg-accentInk/10 text-accentInk text-sm font-medium"
-                >
-                  +{REST_ADJUST}s
-                </button>
-              </div>
-              <textarea
-                value={note}
-                onChange={handleNoteChange}
-                placeholder="Notes: how it felt, weight used, adjustments..."
-                rows={2}
-                className="mt-6 w-full max-w-xs bg-accentInk/10 placeholder:text-accentInk/40 text-accentInk rounded-xl p-3 text-sm outline-none resize-none"
-              />
-            </>
-          )}
+            )}
+          </div>
 
-          {nextMoveName && step.type !== "countdown" && (
-            <p className="text-accentInk/50 text-xs mt-8 tracking-wide uppercase">
-              Next: {nextMoveName}
-            </p>
-          )}
+          <button
+            onClick={() => goTo(index + 1)}
+            className="w-full py-4 md:py-5 rounded-2xl bg-accentInk text-accentPaper font-bold text-base md:text-lg"
+          >
+            {step.type === "move" && !step.timed ? "Done" : "Skip"}
+          </button>
+          <button
+            onClick={() => setShowEndConfirm(true)}
+            className="w-full py-3 text-accentInk/50 text-sm md:text-base font-medium mt-1"
+          >
+            Finish early
+          </button>
         </div>
-
-        <button
-          onClick={() => goTo(index + 1)}
-          className="w-full py-4 rounded-2xl bg-accentInk text-accentPaper font-bold text-base"
-        >
-          {step.type === "move" && !step.timed ? "Done" : "Skip"}
-        </button>
-        <button
-          onClick={() => setShowEndConfirm(true)}
-          className="w-full py-3 text-accentInk/50 text-sm font-medium mt-1"
-        >
-          Finish early
-        </button>
       </div>
+
+      <ProgressRail steps={steps} index={index} />
 
       {showEndConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center px-6 z-50">
