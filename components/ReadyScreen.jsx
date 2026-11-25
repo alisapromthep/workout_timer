@@ -1,8 +1,38 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { estimateWorkoutSeconds } from "../lib/steps";
 import { unlockAudio } from "../lib/sound";
+import ExerciseCard from "./ExerciseCard";
+
+const UNDO_SECONDS = 5;
+
+// Stable per-exercise ids so React keeps the right card (and its editor)
+// attached to the right exercise when the list is reordered or trimmed.
+let nextExerciseId = 0;
+const newExerciseId = () => `ex-${++nextExerciseId}`;
+
+function withIds(exercises) {
+  return exercises.map((ex) => ({
+    ...ex,
+    name: ex.name || "",
+    id: ex.id || newExerciseId(),
+  }));
+}
+
+function blankExercise() {
+  return {
+    id: newExerciseId(),
+    name: "",
+    reps: 10,
+    sets: null,
+    perSide: false,
+    weight: null,
+    exerciseSeconds: null,
+    restAfter: null,
+    cue: null,
+  };
+}
 
 function formatEstimate(totalSeconds) {
   const mins = Math.round(totalSeconds / 60);
@@ -50,43 +80,25 @@ function StepperRow({
   );
 }
 
-// Compact stepper used inside each exercise card.
-function MiniStepper({ label, value, onChange, min = 0, step = 1, suffix = "" }) {
-  return (
-    <div className="flex flex-col items-center gap-1">
-      <span className="text-ink/40 text-[10px] uppercase tracking-wide">
-        {label}
-      </span>
-      <div className="flex items-center gap-1.5">
-        <button
-          onClick={() => onChange(Math.max(min, value - step))}
-          className="w-6 h-6 rounded-full bg-paper text-ink text-sm leading-none flex items-center justify-center"
-        >
-          −
-        </button>
-        <span className="font-mono text-ink text-xs w-9 text-center tabular-nums">
-          {value}
-          {suffix}
-        </span>
-        <button
-          onClick={() => onChange(value + step)}
-          className="w-6 h-6 rounded-full bg-paper text-ink text-sm leading-none flex items-center justify-center"
-        >
-          +
-        </button>
-      </div>
-    </div>
-  );
-}
-
 export default function ReadyScreen({ workout, onStart, onBack }) {
   const isSets = workout.style === "sets";
   const [rounds, setRounds] = useState(workout.rounds || 1);
   const [restBetweenRounds, setRestBetweenRounds] = useState(
     workout.restBetweenRounds || 0,
   );
-  const [exercises, setExercises] = useState(workout.exercises);
+  const [exercises, setExercises] = useState(() => withIds(workout.exercises));
   const [applyToAll, setApplyToAll] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  // Last removed exercise and where it was, so "Undo" can put it back.
+  const [removed, setRemoved] = useState(null);
+
+  useEffect(() => {
+    if (!removed) return;
+    const timer = setTimeout(() => setRemoved(null), UNDO_SECONDS * 1000);
+    return () => clearTimeout(timer);
+  }, [removed]);
+
+  const hasUnnamed = exercises.some((ex) => !ex.name.trim());
 
   // In sets style, an exercise's own "sets"/"restAfter" override the
   // workout-wide values, so the top controls would silently do nothing for
@@ -110,10 +122,43 @@ export default function ReadyScreen({ workout, onStart, onBack }) {
     [finalWorkout],
   );
 
-  function updateExercise(index, patch) {
+  function updateExercise(id, patch) {
     setExercises((prev) =>
-      prev.map((ex, i) => (i === index ? { ...ex, ...patch } : ex)),
+      prev.map((ex) => (ex.id === id ? { ...ex, ...patch } : ex)),
     );
+  }
+
+  function moveExercise(index, delta) {
+    setExercises((prev) => {
+      const target = index + delta;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
+  function removeExercise(index) {
+    const ex = exercises[index];
+    setExercises((prev) => prev.filter((_, i) => i !== index));
+    if (editingId === ex.id) setEditingId(null);
+    setRemoved({ exercise: ex, index });
+  }
+
+  function undoRemove() {
+    if (!removed) return;
+    setExercises((prev) => {
+      const next = [...prev];
+      next.splice(Math.min(removed.index, next.length), 0, removed.exercise);
+      return next;
+    });
+    setRemoved(null);
+  }
+
+  function addExercise() {
+    const ex = blankExercise();
+    setExercises((prev) => [...prev, ex]);
+    setEditingId(ex.id);
   }
 
   function handleRoundsChange(value) {
@@ -202,68 +247,55 @@ export default function ReadyScreen({ workout, onStart, onBack }) {
       </div>
 
       <div className="flex-1 overflow-y-auto -mx-6 px-6 mt-4 space-y-2">
-        {exercises.map((ex, i) => {
-          const timed = ex.exerciseSeconds > 0;
-          const exSets = ex.sets || rounds;
-          const exRest = ex.restAfter ?? restBetweenRounds;
-          return (
-            <div key={i} className="bg-surface rounded-xl px-4 py-3">
-              <div className="flex items-baseline justify-between">
-                <span className="text-ink font-medium text-[15px]">
-                  {ex.name}
-                </span>
-                {ex.perSide && !timed && (
-                  <span className="text-ink/40 text-xs">per side</span>
-                )}
-              </div>
-              {(ex.weight || ex.cue) && (
-                <p className="text-ink/40 text-xs mt-1">
-                  {[ex.weight, ex.cue].filter(Boolean).join(" · ")}
-                </p>
-              )}
-              <div className="flex justify-between mt-3">
-                {isSets && (
-                  <MiniStepper
-                    label="Sets"
-                    value={exSets}
-                    onChange={(v) => updateExercise(i, { sets: v })}
-                    min={1}
-                  />
-                )}
-                {timed ? (
-                  <MiniStepper
-                    label="Time"
-                    value={ex.exerciseSeconds}
-                    onChange={(v) => updateExercise(i, { exerciseSeconds: v })}
-                    min={5}
-                    step={5}
-                    suffix="s"
-                  />
-                ) : (
-                  <MiniStepper
-                    label="Reps"
-                    value={ex.reps || 0}
-                    onChange={(v) => updateExercise(i, { reps: v })}
-                    min={1}
-                  />
-                )}
-                <MiniStepper
-                  label={isSets ? "Rest" : "Rest after"}
-                  value={isSets ? exRest : ex.restAfter || 0}
-                  onChange={(v) => updateExercise(i, { restAfter: v })}
-                  min={0}
-                  step={5}
-                  suffix="s"
-                />
-              </div>
-            </div>
-          );
-        })}
+        {exercises.map((ex, i) => (
+          <ExerciseCard
+            key={ex.id}
+            exercise={ex}
+            isSets={isSets}
+            rounds={rounds}
+            restBetweenRounds={restBetweenRounds}
+            editing={editingId === ex.id}
+            onChange={(patch) => updateExercise(ex.id, patch)}
+            onEdit={() => setEditingId(ex.id)}
+            onDoneEditing={() => setEditingId(null)}
+            onMoveUp={() => moveExercise(i, -1)}
+            onMoveDown={() => moveExercise(i, 1)}
+            onRemove={() => removeExercise(i)}
+            canMoveUp={i > 0}
+            canMoveDown={i < exercises.length - 1}
+            canRemove={exercises.length > 1}
+          />
+        ))}
+
+        <button
+          onClick={addExercise}
+          className="w-full py-3 rounded-xl border-2 border-dashed border-line text-ink/50 hover:text-ink text-sm font-medium transition-colors"
+        >
+          + Add exercise
+        </button>
       </div>
+
+      {removed && (
+        <div className="mt-4 flex items-center justify-between gap-3 bg-ink text-paper rounded-xl px-4 py-2.5 text-sm">
+          <span className="min-w-0 truncate">
+            Removed {removed.exercise.name.trim() || "exercise"}
+          </span>
+          <button onClick={undoRemove} className="font-bold text-go shrink-0">
+            Undo
+          </button>
+        </div>
+      )}
+
+      {hasUnnamed && (
+        <p className="text-rest text-xs mt-4 text-center">
+          Give every exercise a name to start.
+        </p>
+      )}
 
       <button
         onClick={handleStart}
-        className="mt-6 w-full py-4 rounded-2xl bg-go text-accentInk font-bold text-base"
+        disabled={hasUnnamed}
+        className="mt-6 w-full py-4 rounded-2xl bg-go text-accentInk font-bold text-base disabled:opacity-30 transition-opacity"
       >
         Start workout
       </button>
